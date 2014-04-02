@@ -1,0 +1,481 @@
+<html>
+
+<head>
+<title>Cai Cai Foguete</title>
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+
+<script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+<script type="text/javascript" src="webgl-utils.js"></script>
+
+<script id="shader-fs" type="x-shader/x-fragment">
+   
+   precision mediump float;
+
+   varying vec2 vTextureCoord;
+   varying vec3 vLightWeighting;
+
+   uniform sampler2D uSampler;
+
+   void main(void) {
+       vec4 textureColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+       gl_FragColor = vec4(textureColor.rgb * vLightWeighting, textureColor.a);
+   }
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+   
+   attribute vec3 aVertexPosition;
+   attribute vec3 aVertexNormal;
+   attribute vec2 aTextureCoord;
+
+   uniform mat4 uMVMatrix;
+   uniform mat4 uPMatrix;
+   uniform mat3 uNMatrix;
+
+   uniform vec3 uAmbientColor;
+
+   uniform vec3 uLightingDirection;
+   uniform vec3 uDirectionalColor;
+
+   uniform bool uUseLighting;
+
+   varying vec2 vTextureCoord;
+   varying vec3 vLightWeighting;
+
+   void main(void) {
+       gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+       vTextureCoord = aTextureCoord;
+
+       if (!uUseLighting) {
+           vLightWeighting = vec3(1.0, 1.0, 1.0);
+       } else {
+           vec3 transformedNormal = uNMatrix * aVertexNormal;
+           float directionalLightWeighting = max(dot(transformedNormal, uLightingDirection), 0.0);
+           vLightWeighting = uAmbientColor + uDirectionalColor * directionalLightWeighting;
+       }
+   }
+
+</script>
+
+
+<script type="text/javascript">
+
+    var gl;
+
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("experimental-webgl");
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+
+
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
+            }
+            k = k.nextSibling;
+        }
+
+        var shader;
+        if (shaderScript.type == "x-shader/x-fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        return shader;
+    }
+
+
+    var shaderProgram;
+
+    function initShaders() {
+        var fragmentShader = getShader(gl, "shader-fs");
+        var vertexShader = getShader(gl, "shader-vs");
+
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        gl.useProgram(shaderProgram);
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+
+        shaderProgram.vertexNormalAttribute = gl.getAttribLocation(shaderProgram, "aVertexNormal");
+        gl.enableVertexAttribArray(shaderProgram.vertexNormalAttribute);
+
+        shaderProgram.textureCoordAttribute = gl.getAttribLocation(shaderProgram, "aTextureCoord");
+        gl.enableVertexAttribArray(shaderProgram.textureCoordAttribute);
+
+        shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+        shaderProgram.nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
+        shaderProgram.samplerUniform = gl.getUniformLocation(shaderProgram, "uSampler");
+        shaderProgram.useLightingUniform = gl.getUniformLocation(shaderProgram, "uUseLighting");
+        shaderProgram.ambientColorUniform = gl.getUniformLocation(shaderProgram, "uAmbientColor");
+        shaderProgram.lightingDirectionUniform = gl.getUniformLocation(shaderProgram, "uLightingDirection");
+        shaderProgram.directionalColorUniform = gl.getUniformLocation(shaderProgram, "uDirectionalColor");
+    }
+
+    function handleLoadedTexture(texture) {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texture.image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+
+    var minhaTextura;
+
+    function initTexture() {
+        minhaTextura = gl.createTexture();
+        minhaTextura.image = new Image();
+        minhaTextura.image.onload = function () {
+            handleLoadedTexture(minhaTextura)
+        }
+
+        minhaTextura.image.src = "tex2.jpg";
+    }
+
+    var mvMatrix = mat4.create();
+    var mvMatrixStack = [];
+    var pMatrix = mat4.create();
+
+    function mvPushMatrix() {
+        var copy = mat4.create();
+        mat4.set(mvMatrix, copy);
+        mvMatrixStack.push(copy);
+    }
+
+    function mvPopMatrix() {
+        if (mvMatrixStack.length == 0) {
+            throw "Invalid popMatrix!";
+        }
+        mvMatrix = mvMatrixStack.pop();
+    }
+
+
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+
+        var normalMatrix = mat3.create();
+        mat4.toInverseMat3(mvMatrix, normalMatrix);
+        mat3.transpose(normalMatrix);
+        gl.uniformMatrix3fv(shaderProgram.nMatrixUniform, false, normalMatrix);
+    }
+
+
+    function degToRad(degrees) {
+        return degrees * Math.PI / 180;
+    }
+
+
+    var FogVerPos;
+    var FogVerTex;
+    var FogVerInd;
+    var FogVerNorm;
+
+    function initBuffers() {
+
+        FogVerPos = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, FogVerPos);
+        var vertices = [
+            0.0, 1.0, 0.0, //Topo da pirâmide //I0
+            1.0, 0.5, 0.0, //H1 //I1
+            0.6, 0.5, 1.0, //H2 //I2
+            -0.6, 0.5, 1.0, //H3 //I3
+            -1.0, 0.5, 0.0, //H4 //I4
+            -0.6, 0.5, -1.0, //H5 //I5
+            0.6, 0.5, -1.0, //H6 //I6
+            //Lados de baixo
+            //L1
+            1.0, 0.5, 0.0, //h1 //I7
+            0.6, 0.5, 1.0, //h2 //I8
+            0.6, -1.0, 1.0, //h8 //I9
+            1.0, -1.0, 0.0, //h7 //I10
+            //L2
+            0.6, 0.5, 1.0, //h2 //I11
+            -0.6, 0.5, 1.0, //h3 //I12
+            -0.6, -1.0, 1.0, //H9 //I13
+            0.6, -1.0, 1.0, //H8 //I14
+            //L3
+            -0.6, 0.5, 1.0, //H3 //I15
+            -1.0, 0.5, 0.0, //H4 //I16
+            -1.0, -1.0, 0.0, //H10 //I17
+            -0.6, -1.0, 1.0, //H9 //I18
+            //l4 
+            -1.0, 0.5, 0.0, //H4 //I19
+            -0.6, 0.5, -1.0, //H5 //I20
+            -0.6, -1.0, -1.0, //H11 //I21
+            -1.0, -1.0, 0.0, //H10 //I22
+            //l5
+            0.6, 0.5, -1.0, //I23
+            -0.6, 0.5, -1.0, //I24
+            -0.6, -1.0, -1.0, //I25
+            0.6, -1.0, -1.0, //I26
+            //L6
+            1.0, 0.5, 0.0, //I27
+            0.6, 0.5, -1.0, //I28
+            0.6, -1.0, -1.0, //I29
+            1.0, -1.0, 0.0, //I30
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        FogVerPos.itemSize = 3;
+        FogVerPos.numItems = 31;
+
+        FogVerNorm = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, FogVerNorm);
+        var normals = [
+            //Topo da pirâmide
+            -0.22, 0.97, 0.088, //N0
+            0.0, 0.0, 1.0,      //N1
+            -0.74, 0.29, -0.59, //N2
+            -0.20, 0.91, -0.33, //N3
+            -0.44, 0.89, 0.0,   //N4
+            -0.20, 0.91, 0.33,  //N5
+            0.20, 0.91, 0.33,   //N6
+            //L1
+            0.0, 0.0, 1.0,
+            0.20, 0.91, 0.33,
+            0.53, 0.0, 0.84,
+            1.0, 0.0, 0.0, 
+            
+            //L2
+            0.20, 0.91, 0.33,
+            -0.20, 0.91, 0.33,
+            -0.53, 0.0, 0.84,
+            0.53, 0.0, 0.84,
+            
+            //L3
+           -0.20, 0.91, 0.33,
+           -0.44, 0.89, 0.0,
+           -1.0, 0.0, 0.0,
+           -0.53, 0.0, 0.84,
+           
+           //L4
+            -0.44, 0.89, 0.0,
+            -0.20, 0.91, -0.33,
+            -0.53, 0.0, -0.84,
+            -1.0, 0.0, 0.0,
+
+            //L5
+            -0.20, 0.91, -0.33,
+            -0.74, 0.29, -0.59,
+            0.53, 0.0, -0.84,
+            -0.53, 0.0, -0.84,
+
+            //L6
+            -0.74, 0.29, -0.59,
+            0.0, 0.0, 1.0,
+            1.0, 0.0, 0.0,
+            0.53, 0.0, -0.84,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+        FogVerNorm.itemSize = 3;
+        FogVerNorm.numItems = 31;
+
+        FogVerTex = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, FogVerTex);
+        var texture = [
+            //Mapeando um hexágono em um plano
+            0.5, 0.5,
+            0.6, 0.0,
+            0.3, 0.0,
+            0.0, 0.5,
+            0.3, 1.0,
+            0.6, 1.0,
+            1.0, 0.5,
+            //L1
+            1.0, 1.0,
+            0.0, 1.0,
+            0.0, 0.0,
+            1.0, 0.0,
+            //L2
+            1.0, 1.0,
+            0.0, 1.0,
+            0.0, 0.0,
+            1.0, 0.0,
+            //L3
+            1.0, 1.0,
+            0.0, 1.0,
+            0.0, 0.0,
+            1.0, 0.0,
+            //L4
+            1.0, 1.0,
+            0.0, 1.0,
+            0.0, 0.0,
+            1.0, 0.0,
+            //L5
+            1.0, 1.0,
+            0.0, 1.0,
+            0.0, 0.0,
+            1.0, 0.0,
+            //L6
+            0.0, 1.0,
+            1.0, 1.0,
+            1.0, 0.0,
+            0.0, 0.0,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texture), gl.STATIC_DRAW);
+        FogVerTex.itemSize = 2;
+        FogVerTex.numItems = 31;
+
+        FogVerInd = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, FogVerInd);
+        var indices = [
+            //Triângulo de cima
+            0, 2, 1,
+            0, 3, 2,
+            0, 4, 3,
+            0, 5, 4,
+            0, 6, 5,
+            0, 1, 6,
+            //L1
+            7, 8, 9,  7, 9, 10,
+            11, 12, 13,  11, 13, 14,
+            15, 16, 17,  15, 17, 18,
+            19, 20, 21,  19, 21, 22,
+            23, 24, 26,  26, 24, 25,
+            27, 28, 30,  30, 29, 28
+            
+        ];
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+        FogVerInd.itemSize = 1;
+        FogVerInd.numItems = 52;
+    }
+
+    var angMax = 180;
+    var FogRot = 0;
+
+    //Checar as normais das faces de 180 a 270!!!!!
+
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
+
+        mat4.identity(mvMatrix);
+
+        mat4.translate(mvMatrix, [0.0, 0.0, -10.0]);
+
+        if (FogRot <= angMax)
+            mat4.rotate(mvMatrix, degToRad(FogRot), [1.0, 0.0, -1.0]);
+        else
+            FogRot = 0;
+
+        //mat4.rotate(mvMatrix, degToRad(270), [0.0, 1.0, 0.0]);
+
+        mat4.translate(mvMatrix, [-2.5, 0.0, 0.0]);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, FogVerPos);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, FogVerPos.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, FogVerNorm);
+        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, FogVerNorm.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, FogVerTex);
+        gl.vertexAttribPointer(shaderProgram.textureCoordAttribute, FogVerTex.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, minhaTextura);
+        gl.uniform1i(shaderProgram.samplerUniform, 0);
+        var lighting = 1;
+        gl.uniform1i(shaderProgram.useLightingUniform, lighting);
+        if (lighting) {
+            gl.uniform3f(shaderProgram.ambientColorUniform, 0.2, 0.2, 0.2);
+            var lightingDirection = [1.0, -1.0, 0.0];
+            var adjustedLD = vec3.create();
+            vec3.normalize(lightingDirection, adjustedLD);
+            vec3.scale(adjustedLD, -1);
+            gl.uniform3fv(shaderProgram.lightingDirectionUniform, adjustedLD);
+            gl.uniform3f(shaderProgram.directionalColorUniform, 0.4, 0.6, 0.3);
+        }
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, FogVerInd);
+        setMatrixUniforms();
+        gl.drawElements(gl.TRIANGLES, FogVerInd.numItems, gl.UNSIGNED_SHORT, 0);
+
+
+    }
+
+
+    var lastTime = 0;
+
+    function animate() {
+        var timeNow = new Date().getTime();
+        if (lastTime != 0) {
+            var elapsed = timeNow - lastTime;
+
+            FogRot += (60 * elapsed) / 1000.0;
+        }
+
+        lastTime = timeNow;
+    }
+
+
+    function tick() {
+        requestAnimFrame(tick);
+        drawScene();
+        animate();
+    }
+
+
+    function webGLStart() {
+        var canvas = document.getElementById("lesson04-canvas");
+        initGL(canvas);
+        initShaders();
+        initBuffers();
+        initTexture();
+
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+
+        tick();
+    }
+
+</script>
+
+
+</head>
+
+
+<body onload="webGLStart();">
+
+    <canvas id="lesson04-canvas" style="border: none;" width="500" height="500"></canvas>
+
+    <br/>
+</body>
+
+</html>

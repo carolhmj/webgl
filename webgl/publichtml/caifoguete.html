@@ -14,11 +14,13 @@
    varying vec2 vTextureCoord;
    varying vec3 vLightWeighting;
 
+   uniform float uAlpha;
+
    uniform sampler2D uSampler;
 
    void main(void) {
        vec4 textureColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
-       gl_FragColor = vec4(textureColor.rgb * vLightWeighting, textureColor.a);
+       gl_FragColor = vec4(textureColor.rgb * vLightWeighting, textureColor.a * uAlpha);
    }
 </script>
 
@@ -145,6 +147,7 @@
         shaderProgram.ambientColorUniform = gl.getUniformLocation(shaderProgram, "uAmbientColor");
         shaderProgram.lightingDirectionUniform = gl.getUniformLocation(shaderProgram, "uLightingDirection");
         shaderProgram.directionalColorUniform = gl.getUniformLocation(shaderProgram, "uDirectionalColor");
+        shaderProgram.alphaUniform = gl.getUniformLocation(shaderProgram, "uAlpha");
     }
 
     function handleLoadedTexture(texture) {
@@ -412,6 +415,18 @@
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, minhaTextura);
         gl.uniform1i(shaderProgram.samplerUniform, 0);
+
+        var blending = 1;
+            if (blending) {
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+                gl.enable(gl.BLEND);
+                gl.disable(gl.DEPTH_TEST);
+                gl.uniform1f(shaderProgram.alphaUniform, 0.7);
+            } else {
+                gl.disable(gl.BLEND);
+                gl.enable(gl.DEPTH_TEST);
+            }
+
         var lighting = 1;
         gl.uniform1i(shaderProgram.useLightingUniform, lighting);
         if (lighting) {
@@ -423,6 +438,7 @@
             gl.uniform3fv(shaderProgram.lightingDirectionUniform, adjustedLD);
             gl.uniform3f(shaderProgram.directionalColorUniform, 0.4, 0.6, 0.3);
         }
+
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, FogVerInd);
         setMatrixUniforms();
         gl.drawElements(gl.TRIANGLES, FogVerInd.numItems, gl.UNSIGNED_SHORT, 0);

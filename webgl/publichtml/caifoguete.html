@@ -226,6 +226,7 @@
     mat4.identity(matRotacao);
     var matTranslacao = mat4.create();
     mat4.identity(matTranslacao);
+    mat4.translate(matTranslacao, [0.0, 0.0, -15]);
 
     var theta = 0;
     var taxaTheta = 0;
@@ -439,7 +440,7 @@
             7, 8, 9,  10, 7, 9,
             11, 12, 13,  11, 13, 14,
             15, 16, 17,  15, 17, 18,
-           19, 20, 21,  19, 21, 22,
+            19, 20, 21,  19, 21, 22,
             23, 24, 25,  23, 25, 26,
             27, 28, 29,  27, 29, 30
             
@@ -482,9 +483,8 @@
 
     Foguete.prototype.draw = function(){
 
-        mat4.translate(mvMatrix, [0.0, 0.0, -15]);
 
-        if (this.angAt <= this.angMax)
+       if (this.angAt <= this.angMax)
            mat4.rotate(mvMatrix, degToRad(this.angAt), [0.0, 0.0, -1.0]);
         else
           this.angAt = 0;
@@ -521,7 +521,7 @@
         vec3.normalize(lightingDirection, adjustedLD);
         vec3.scale(adjustedLD, -1);
         gl.uniform3fv(shaderProgram.lightingDirectionUniform, adjustedLD);
-        gl.uniform3f(shaderProgram.directionalColorUniform, 0.4, 0.6, 0.3);
+        gl.uniform3f(shaderProgram.directionalColorUniform, 0.6, 0.6, 0.6);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, FogVerInd);
         setMatrixUniforms();
@@ -534,6 +534,7 @@
         this.angle = 0;
         this.dist = startingDistance;
         this.rotationSpeed = rotationSpeed;
+        this.variavel = 0;
 
         // Set the colors to a starting value.
         this.randomiseColors();
@@ -544,7 +545,7 @@
 
         // Move to the star's position
         mat4.rotate(mvMatrix, degToRad(this.angle), [0.0, 1.0, 0.0]);
-        mat4.translate(mvMatrix, [this.dist, 0.0, 0.0]);
+        mat4.translate(mvMatrix, [this.variavel, -this.dist*2, 0.0]);
 
         // Rotate back so that the star is facing the viewer
         mat4.rotate(mvMatrix, degToRad(-this.angle), [0.0, 1.0, 0.0]);
@@ -573,9 +574,11 @@
 
         // Decrease the distance, resetting the star to the outside of
         // the spiral if it's at the center.
-        this.dist -= 0.01 * effectiveFPMS * elapsedTime;
-        if (this.dist < 0.0) {
-            this.dist += 3.0;
+        this.dist += 0.01 * effectiveFPMS * elapsedTime;
+        this.variavel = 0.5 + this.dist;
+        if (this.dist > 1.0) {
+            this.dist -= 1.0;
+            this.variavel = 0.5;
             this.randomiseColors();
         }
 
@@ -604,9 +607,9 @@
     function initWorldObjects(){
         foguete = new Foguete(5.0, 180);
 
-        var numStars = 10;
+        var numStars = 20;
         for (var i=0; i<numStars; i++){
-            stars.push(new Star(i/numStars*5.0, i/numStars));
+            stars.push(new Star(i/numStars, i/numStars));
         }
     }
 
@@ -661,7 +664,13 @@
 
         mat4.multiply(matTranslacao, matRotacao, mvMatrix);
 
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
         foguete.draw();
+
+        gl.enable(gl.BLEND);
+        gl.depthMask(gl.FALSE); 
+        mat4.translate(mvMatrix,[0.0, -1.0, 0.0]);
         for (var i in stars){
             stars[i].draw(spin);
             spin += 0.1;

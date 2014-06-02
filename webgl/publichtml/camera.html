@@ -292,10 +292,12 @@
 
         var up = [0,1,0];
 
-        console.log(cameraPos);
+        console.log(Math.round(cameraPos[2]));
 
         mat4.lookAt(cameraPos, [0, 0, 0], [0, 1, 0], cameraLookMatrix);
         cMatrix = cameraLookMatrix;
+
+        mat4.translate(mvMatrix, [-1, 0, 0]);
 
 
         gl.bindBuffer(gl.ARRAY_BUFFER, cubeVertexPositionBuffer);
